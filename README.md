@@ -130,7 +130,7 @@ dense_2 (Dense - Softmax)    (None, vocab_size)        Varies
    git add .
    git commit -m "feat: complete end-to-end MelodyMind AI system"
    git branch -M main
-   git remote add origin https://github.com/your-username/CodeAlpha_Music_Generation_AI.git
+   git remote add origin https://github.com/your-username/repository-name.git
    git push -u origin main
    ```
 
