@@ -1,9 +1,11 @@
 Flask==3.0.3
 gunicorn==22.0.0
-tensorflow-cpu==2.15.0
+tf-nightly
 numpy
 pandas
 music21
 scikit-learn
 pretty_midi
 matplotlib
+setuptools
+wheel
