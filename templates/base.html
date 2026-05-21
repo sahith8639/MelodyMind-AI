@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}MelodyMind AI - Compose Infinite Melodies{% endblock %}</title>
+    
+    <!-- SEO Meta Tags -->
+    <meta name="description" content="Compose original music using state-of-the-art deep learning. Train your own LSTM model or compose instant melodies in your browser.">
+    <meta name="keywords" content="AI Music, Music Generation, Deep Learning LSTM, music21, TensorFlow, WaveSurfer, MIDI generation">
+    <meta name="author" content="MelodyMind AI">
+    
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#FFF1F2',
+                            100: '#FFE4E6',
+                            200: '#FECDD3',
+                            300: '#FDA4AF',
+                            400: '#FB7185',
+                            500: '#F43F5E',
+                            600: '#E11D48',
+                            700: '#BE123C',
+                            800: '#9F1239',
+                            900: '#881337',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <!-- Font Awesome CDN -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- Custom CSS -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    
+    {% block head %}{% endblock %}
+</head>
+<body class="bg-slate-50 text-slate-800 min-h-screen flex flex-col">
+
+    <!-- Toast Notifications Container -->
+    <div id="toast-container" class="fixed top-5 right-5 z-50 flex flex-col gap-3 max-w-sm pointer-events-none"></div>
+
+    <!-- Navigation Header -->
+    <header class="bg-white border-b border-brand-100 shadow-sm sticky top-0 z-40">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex justify-between items-center h-16">
+                <!-- Logo -->
+                <div class="flex items-center">
+                    <a href="{{ url_for('home') }}" class="flex items-center gap-2 group">
+                        <div class="h-10 w-10 rounded-xl bg-gradient-to-br from-brand-500 to-red-600 flex items-center justify-center text-white shadow-md group-hover:scale-105 transition-transform duration-300">
+                            <i class="fa-solid fa-brain-music text-lg"></i>
+                        </div>
+                        <div>
+                            <span class="font-extrabold text-xl tracking-tight text-slate-900">MelodyMind <span class="text-brand-600">AI</span></span>
+                            <span class="block text-[10px] text-slate-500 font-semibold -mt-1 uppercase tracking-widest">Neural Music Engine</span>
+                        </div>
+                    </a>
+                </div>
+
+                <!-- Desktop Navigation Links -->
+                <nav class="hidden md:flex space-x-8">
+                    <a href="{{ url_for('home') }}" class="inline-flex items-center px-1 pt-1 border-b-2 {% if request.path == '/' %}border-brand-600 text-slate-950 font-bold{% else %}border-transparent text-slate-600 hover:text-slate-900 hover:border-brand-300{% endif %} text-sm font-medium transition-all duration-200">
+                        <i class="fa-solid fa-chart-line mr-2"></i> Dashboard
+                    </a>
+                    <a href="{{ url_for('train') }}" class="inline-flex items-center px-1 pt-1 border-b-2 {% if request.path == '/train' %}border-brand-600 text-slate-950 font-bold{% else %}border-transparent text-slate-600 hover:text-slate-900 hover:border-brand-300{% endif %} text-sm font-medium transition-all duration-200">
+                        <i class="fa-solid fa-sliders mr-2"></i> Train Model
+                    </a>
+                    <a href="{{ url_for('generate') }}" class="inline-flex items-center px-1 pt-1 border-b-2 {% if request.path == '/generate' %}border-brand-600 text-slate-950 font-bold{% else %}border-transparent text-slate-600 hover:text-slate-900 hover:border-brand-300{% endif %} text-sm font-medium transition-all duration-200">
+                        <i class="fa-solid fa-wand-magic-sparkles mr-2"></i> Compose
+                    </a>
+                    <a href="{{ url_for('about') }}" class="inline-flex items-center px-1 pt-1 border-b-2 {% if request.path == '/about' %}border-brand-600 text-slate-950 font-bold{% else %}border-transparent text-slate-600 hover:text-slate-900 hover:border-brand-300{% endif %} text-sm font-medium transition-all duration-200">
+                        <i class="fa-solid fa-circle-info mr-2"></i> About
+                    </a>
+                </nav>
+
+                <!-- Mobile Menu Button -->
+                <div class="flex items-center md:hidden">
+                    <button id="mobile-menu-btn" type="button" class="text-slate-500 hover:text-slate-800 focus:outline-none" aria-controls="mobile-menu" aria-expanded="false">
+                        <i class="fa-solid fa-bars text-xl"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Mobile Navigation Menu -->
+        <div class="hidden md:hidden border-t border-slate-100 bg-white" id="mobile-menu">
+            <div class="px-2 pt-2 pb-3 space-y-1">
+                <a href="{{ url_for('home') }}" class="block px-3 py-2 rounded-md {% if request.path == '/' %}bg-brand-50 text-brand-700 font-bold{% else %}text-slate-600 hover:bg-slate-50 hover:text-slate-900{% endif %} text-base font-medium">
+                    <i class="fa-solid fa-chart-line mr-2"></i> Dashboard
+                </a>
+                <a href="{{ url_for('train') }}" class="block px-3 py-2 rounded-md {% if request.path == '/train' %}bg-brand-50 text-brand-700 font-bold{% else %}text-slate-600 hover:bg-slate-50 hover:text-slate-900{% endif %} text-base font-medium">
+                    <i class="fa-solid fa-sliders mr-2"></i> Train Model
+                </a>
+                <a href="{{ url_for('generate') }}" class="block px-3 py-2 rounded-md {% if request.path == '/generate' %}bg-brand-50 text-brand-700 font-bold{% else %}text-slate-600 hover:bg-slate-50 hover:text-slate-900{% endif %} text-base font-medium">
+                    <i class="fa-solid fa-wand-magic-sparkles mr-2"></i> Compose
+                </a>
+                <a href="{{ url_for('about') }}" class="block px-3 py-2 rounded-md {% if request.path == '/about' %}bg-brand-50 text-brand-700 font-bold{% else %}text-slate-600 hover:bg-slate-50 hover:text-slate-900{% endif %} text-base font-medium">
+                    <i class="fa-solid fa-circle-info mr-2"></i> About
+                </a>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="flex-grow">
+        {% block content %}{% endblock %}
+    </main>
+
+    <!-- Footer Section -->
+    <footer class="bg-white border-t border-brand-100 text-slate-600 py-10 mt-auto shadow-inner">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-8">
+                <!-- Info Column -->
+                <div class="md:col-span-2 space-y-4">
+                    <div class="flex items-center gap-2">
+                        <div class="h-8 w-8 rounded-lg bg-brand-600 flex items-center justify-center text-white shadow-sm">
+                            <i class="fa-solid fa-brain-music text-sm"></i>
+                        </div>
+                        <span class="font-extrabold text-lg tracking-tight text-slate-900">MelodyMind <span class="text-brand-600">AI</span></span>
+                    </div>
+                    <p class="text-sm text-slate-500 max-w-sm">
+                        An end-to-end deep learning framework designed to train neural networks on musical structures and generate original MIDI melodies directly in your browser.
+                    </p>
+                    <div class="flex gap-4">
+                        <a href="https://github.com" target="_blank" class="text-slate-400 hover:text-brand-600 text-lg transition-colors duration-200">
+                            <i class="fa-brands fa-github"></i>
+                        </a>
+                        <a href="#" class="text-slate-400 hover:text-brand-600 text-lg transition-colors duration-200">
+                            <i class="fa-brands fa-twitter"></i>
+                        </a>
+                        <a href="#" class="text-slate-400 hover:text-brand-600 text-lg transition-colors duration-200">
+                            <i class="fa-brands fa-discord"></i>
+                        </a>
+                    </div>
+                </div>
+
+                <!-- Navigation Quick Links -->
+                <div>
+                    <h3 class="text-sm font-bold uppercase tracking-wider text-slate-900 mb-4">Application</h3>
+                    <ul class="space-y-2 text-sm">
+                        <li><a href="{{ url_for('home') }}" class="hover:text-brand-600 transition-colors duration-150">Dashboard</a></li>
+                        <li><a href="{{ url_for('train') }}" class="hover:text-brand-600 transition-colors duration-150">Train Model</a></li>
+                        <li><a href="{{ url_for('generate') }}" class="hover:text-brand-600 transition-colors duration-150">Compose Music</a></li>
+                        <li><a href="{{ url_for('about') }}" class="hover:text-brand-600 transition-colors duration-150">Technical Model Details</a></li>
+                    </ul>
+                </div>
+
+                <!-- Contact & Resources -->
+                <div>
+                    <h3 class="text-sm font-bold uppercase tracking-wider text-slate-900 mb-4">Resources</h3>
+                    <ul class="space-y-2 text-sm">
+                        <li><a href="https://web.mit.edu/music21/" target="_blank" class="hover:text-brand-600 transition-colors duration-150">music21 Docs</a></li>
+                        <li><a href="https://www.tensorflow.org/" target="_blank" class="hover:text-brand-600 transition-colors duration-150">TensorFlow Hub</a></li>
+                        <li><a href="https://wavesurfer.xyz/" target="_blank" class="hover:text-brand-600 transition-colors duration-150">WaveSurfer.js</a></li>
+                        <li><a href="mailto:support@melodymindai.com" class="hover:text-brand-600 transition-colors duration-150"><i class="fa-solid fa-envelope mr-1"></i> Contact Support</a></li>
+                    </ul>
+                </div>
+            </div>
+
+            <!-- Bottom Footer bar -->
+            <div class="mt-8 pt-8 border-t border-slate-100 flex flex-col md:flex-row justify-between items-center text-xs text-slate-400 gap-4">
+                <p>&copy; 2026 MelodyMind AI. Developed for CodeAlpha Music Generation with AI project.</p>
+                <div class="flex gap-4">
+                    <a href="#" class="hover:underline">Privacy Policy</a>
+                    <a href="#" class="hover:underline">Terms of Service</a>
+                    <a href="/health" class="hover:underline text-emerald-500"><i class="fa-solid fa-circle-check"></i> System Healthy</a>
+                </div>
+            </div>
+        </div>
+    </footer>
+
+    <!-- Mobile menu toggle script -->
+    <script>
+        const btn = document.getElementById('mobile-menu-btn');
+        const menu = document.getElementById('mobile-menu');
+        if (btn && menu) {
+            btn.addEventListener('click', () => {
+                menu.classList.toggle('hidden');
+            });
+        }
+    </script>
+
+    {% block scripts %}{% endblock %}
+</body>
+</html>

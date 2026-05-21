@@ -1,0 +1,459 @@
+{% extends 'base.html' %}
+
+{% block title %}Compose Music - MelodyMind AI{% endblock %}
+
+{% block head %}
+<!-- WaveSurfer.js CDN (v7 is the latest, cleanest version) -->
+<script src="https://unpkg.com/wavesurfer.js@7"></script>
+{% endblock %}
+
+{% block content %}
+<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
+    <!-- Header -->
+    <div class="mb-10 text-center md:text-left">
+        <h1 class="text-3xl font-extrabold text-slate-900 tracking-tight">AI Melody Composer</h1>
+        <p class="mt-2 text-slate-500 max-w-xl">
+            Leverage the trained LSTM RNN to generate novel musical pieces. Fine-tune parameters like temperature to unlock creative transitions.
+        </p>
+    </div>
+
+    <!-- Warning if not trained -->
+    {% if not model_exists %}
+    <div class="mb-8 bg-red-50 border border-red-200 rounded-2xl p-6 text-slate-700 flex flex-col md:flex-row items-center gap-4 shadow-sm">
+        <div class="p-3 bg-red-100 rounded-xl text-red-600">
+            <i class="fa-solid fa-triangle-exclamation text-2xl"></i>
+        </div>
+        <div class="flex-grow text-center md:text-left">
+            <h4 class="font-extrabold text-lg text-slate-900">AI Model is Not Trained Yet!</h4>
+            <p class="text-sm text-slate-500 mt-0.5">
+                Before generating music, the neural network needs to read MIDI files and learn note transitions.
+            </p>
+        </div>
+        <a href="{{ url_for('train') }}" class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-semibold rounded-xl text-white bg-red-600 hover:bg-red-700 shadow transition-all duration-200">
+            Go to Trainer <i class="fa-solid fa-arrow-right ml-1"></i>
+        </a>
+    </div>
+    {% endif %}
+
+    <!-- Main Grid -->
+    <div class="grid grid-cols-1 lg:grid-cols-12 gap-8">
+        
+        <!-- Left Panel: Settings Form (5 cols) -->
+        <div class="lg:col-span-5">
+            <div class="bg-white border border-slate-100 rounded-2xl p-6 shadow-sm space-y-6">
+                <h3 class="text-lg font-bold text-slate-900 mb-2 flex items-center gap-2">
+                    <i class="fa-solid fa-sliders text-brand-600"></i> Generation Settings
+                </h3>
+
+                <form id="generate-form" class="space-y-6">
+                    <!-- Note count -->
+                    <div>
+                        <div class="flex justify-between items-center">
+                            <label for="num-notes" class="text-sm font-semibold text-slate-700">Sequence Length</label>
+                            <span class="text-xs font-bold text-slate-400 bg-slate-100 px-2 py-0.5 rounded-md" id="notes-val">500 notes</span>
+                        </div>
+                        <input type="range" id="num-notes" min="100" max="1000" step="50" value="500" class="w-full h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-brand-600 mt-2" oninput="document.getElementById('notes-val').textContent = this.value + ' notes'">
+                        <p class="text-[11px] text-slate-400 mt-1">Number of notes and chords the AI will compose sequentially.</p>
+                    </div>
+
+                    <!-- Temperature (Creativity) -->
+                    <div>
+                        <div class="flex justify-between items-center">
+                            <label for="temperature" class="text-sm font-semibold text-slate-700">Temperature (Creativity)</label>
+                            <span class="text-xs font-bold text-slate-400 bg-slate-100 px-2 py-0.5 rounded-md" id="temp-val">1.0</span>
+                        </div>
+                        <input type="range" id="temperature" min="0.1" max="2.0" step="0.1" value="1.0" class="w-full h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-brand-600 mt-2" oninput="document.getElementById('temp-val').textContent = parseFloat(this.value).toFixed(1)">
+                        <div class="flex justify-between text-[10px] text-slate-400 px-1 mt-1 font-semibold">
+                            <span>Deterministic (0.1)</span>
+                            <span>Standard (1.0)</span>
+                            <span>Experimental (2.0)</span>
+                        </div>
+                        <p class="text-[11px] text-slate-400 mt-1">Higher values increase random, creative pitch transitions. Lower values align strictly to dataset rules.</p>
+                    </div>
+
+                    <!-- Song Name -->
+                    <div>
+                        <label for="output-name" class="block text-sm font-semibold text-slate-700">Composition Name</label>
+                        <input type="text" id="output-name" value="melodymind_composition" placeholder="e.g., epic_synth_arpeggio" class="mt-1.5 block w-full rounded-xl border border-slate-200 px-4 py-2.5 text-slate-700 focus:outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500 text-sm">
+                        <p class="text-[11px] text-slate-400 mt-1">Saves file with custom prefix (letters/underscores only).</p>
+                    </div>
+
+                    <!-- Compose Button -->
+                    <button type="button" id="compose-btn" class="w-full inline-flex items-center justify-center px-4 py-3 border border-transparent text-sm font-semibold rounded-xl text-white bg-brand-600 hover:bg-brand-700 shadow-md hover:shadow-lg transition-all duration-200 glow-btn" {% if not model_exists %}disabled{% endif %}>
+                        <span id="compose-btn-text"><i class="fa-solid fa-wand-magic-sparkles mr-2"></i> Compose Melody</span>
+                        <!-- Loading spinner -->
+                        <span id="compose-spinner" class="hidden"><i class="fa-solid fa-spinner animate-spin mr-2"></i> AI is Composing...</span>
+                    </button>
+                </form>
+            </div>
+        </div>
+
+        <!-- Right Panel: Audio Player & Waveform Visualizer (7 cols) -->
+        <div class="lg:col-span-7 space-y-8">
+            
+            <!-- Waveform player card -->
+            <div class="bg-white border border-slate-100 rounded-2xl p-6 shadow-sm">
+                <h3 class="text-lg font-bold text-slate-900 mb-4 flex items-center gap-2">
+                    <i class="fa-solid fa-volume-high text-brand-600"></i> Active Music Player
+                </h3>
+                
+                <!-- Display composition metadata -->
+                <div class="mb-4 bg-slate-50 border border-slate-100 rounded-xl p-3 flex justify-between items-center text-sm font-medium">
+                    <span class="text-slate-700 truncate max-w-[65%]" id="now-playing-title"><i class="fa-solid fa-file-audio text-brand-500 mr-2"></i>No track loaded</span>
+                    <span class="text-xs text-slate-400 font-bold" id="now-playing-stats">-</span>
+                </div>
+
+                <!-- Waveform display container -->
+                <div class="border border-slate-100 rounded-xl p-4 bg-slate-50 my-6 relative min-h-[90px] flex items-center justify-center" id="waveform-wrapper">
+                    <!-- Placeholder text when empty -->
+                    <div id="waveform-placeholder" class="text-slate-400 text-sm flex flex-col items-center gap-2 py-4">
+                        <i class="fa-solid fa-music text-slate-300 text-3xl"></i>
+                        <p>Generate a track or pick one from history to play</p>
+                    </div>
+                    <!-- Actual wavesurfer canvas element will go here -->
+                    <div id="waveform" class="w-full hidden"></div>
+                </div>
+
+                <!-- Audio Controls -->
+                <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 mt-6">
+                    <!-- Play and Time Controls -->
+                    <div class="flex items-center gap-3">
+                        <button type="button" id="play-pause-btn" class="h-12 w-12 rounded-full bg-brand-600 hover:bg-brand-700 text-white flex items-center justify-center shadow-md hover:shadow-lg focus:outline-none transition-all duration-200" disabled>
+                            <i class="fa-solid fa-play text-lg pl-0.5" id="play-icon"></i>
+                        </button>
+                        <div class="text-xs font-mono text-slate-500">
+                            <span id="current-time">0:00</span> / <span id="duration-time">0:00</span>
+                        </div>
+                    </div>
+
+                    <!-- Volume slider -->
+                    <div class="flex items-center gap-2 w-full md:w-36">
+                        <button type="button" id="mute-btn" class="text-slate-400 hover:text-slate-700 focus:outline-none">
+                            <i class="fa-solid fa-volume-low" id="mute-icon"></i>
+                        </button>
+                        <input type="range" id="volume-slider" min="0" max="1" step="0.05" value="0.75" class="w-full h-1 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-slate-600">
+                    </div>
+
+                    <!-- Actions / Downloads -->
+                    <div class="flex gap-2">
+                        <a id="download-midi-btn" href="#" class="inline-flex items-center px-4 py-2 border border-slate-200 text-xs font-bold rounded-xl text-slate-700 bg-white hover:bg-slate-50 shadow-sm pointer-events-none opacity-50" download>
+                            <i class="fa-solid fa-file-arrow-down mr-1.5 text-brand-600"></i> MIDI
+                        </a>
+                        <a id="download-wav-btn" href="#" class="inline-flex items-center px-4 py-2 border border-slate-200 text-xs font-bold rounded-xl text-slate-700 bg-white hover:bg-slate-50 shadow-sm pointer-events-none opacity-50" download>
+                            <i class="fa-solid fa-file-wave-form mr-1.5 text-red-600"></i> WAV
+                        </a>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Download History -->
+            <div class="bg-white border border-slate-100 rounded-2xl p-6 shadow-sm">
+                <h3 class="text-lg font-bold text-slate-900 mb-4 flex items-center gap-2">
+                    <i class="fa-solid fa-clock-rotate-left text-brand-600"></i> Composition History
+                </h3>
+                
+                <div class="overflow-x-auto">
+                    <table class="min-w-full divide-y divide-slate-100 text-sm">
+                        <thead>
+                            <tr class="text-left text-xs font-bold text-slate-400 uppercase tracking-wider">
+                                <th class="pb-3">Title</th>
+                                <th class="pb-3 hidden sm:table-cell">Date Composed</th>
+                                <th class="pb-3 text-right">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-slate-100 text-slate-700 font-medium" id="history-tbody">
+                            {% if history %}
+                                {% for item in history %}
+                                <tr>
+                                    <td class="py-3.5 pr-3 max-w-[150px] sm:max-w-none">
+                                        <div class="flex items-center gap-2.5">
+                                            <i class="fa-solid fa-compact-disc text-brand-400"></i>
+                                            <span class="truncate font-semibold text-slate-800" title="{{ item.midi_file }}">{{ item.midi_file }}</span>
+                                        </div>
+                                    </td>
+                                    <td class="py-3.5 hidden sm:table-cell text-slate-400 font-normal text-xs">{{ item.formatted_date }}</td>
+                                    <td class="py-3.5 text-right flex justify-end gap-1.5">
+                                        <!-- Load to player -->
+                                        <button type="button" class="play-history-btn inline-flex items-center justify-center h-8 w-8 rounded-lg bg-brand-50 hover:bg-brand-100 text-brand-700 transition-colors" data-midi="{{ item.midi_file }}" data-wav="{{ item.wav_file }}">
+                                            <i class="fa-solid fa-play"></i>
+                                        </button>
+                                        <!-- Download MIDI -->
+                                        <a href="/download/{{ item.midi_file }}" class="inline-flex items-center justify-center h-8 w-8 rounded-lg bg-slate-50 hover:bg-slate-100 text-slate-600 transition-colors" download title="Download MIDI">
+                                            <i class="fa-solid fa-file-arrow-down"></i>
+                                        </a>
+                                        <!-- Download WAV -->
+                                        {% if item.wav_file %}
+                                        <a href="/download/{{ item.wav_file }}" class="inline-flex items-center justify-center h-8 w-8 rounded-lg bg-slate-50 hover:bg-slate-100 text-red-600 transition-colors" download title="Download WAV">
+                                            <i class="fa-solid fa-file-wave-form"></i>
+                                        </a>
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            {% else %}
+                                <tr id="no-history-row">
+                                    <td colspan="3" class="text-center text-slate-400 italic py-6">
+                                        No compositions generated yet. Compose your first melody above!
+                                    </td>
+                                </tr>
+                            {% endif %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            
+        </div>
+        
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<!-- WaveSurfer script loader and AJAX composer -->
+<script src="{{ url_for('static', filename='js/script.js') }}"></script>
+<script>
+    let wavesurfer = null;
+    const playPauseBtn = document.getElementById('play-pause-btn');
+    const playIcon = document.getElementById('play-icon');
+    const currentTimeEl = document.getElementById('current-time');
+    const durationTimeEl = document.getElementById('duration-time');
+    const volumeSlider = document.getElementById('volume-slider');
+    const muteBtn = document.getElementById('mute-btn');
+    const muteIcon = document.getElementById('mute-icon');
+
+    // Form controls
+    const composeBtn = document.getElementById('compose-btn');
+    const composeBtnText = document.getElementById('compose-btn-text');
+    const composeSpinner = document.getElementById('compose-spinner');
+
+    function formatTime(seconds) {
+        const minutes = Math.floor(seconds / 60);
+        const secs = Math.floor(seconds % 60);
+        return `${minutes}:${secs < 10 ? '0' : ''}${secs}`;
+    }
+
+    function initWaveSurfer(wavUrl, title) {
+        // Show actual canvas, hide placeholder
+        document.getElementById('waveform-placeholder').classList.add('hidden');
+        document.getElementById('waveform').classList.remove('hidden');
+
+        // Destroy previous instance
+        if (wavesurfer) {
+            wavesurfer.destroy();
+        }
+
+        // Create wave instance
+        wavesurfer = WaveSurfer.create({
+            container: '#waveform',
+            waveColor: '#FECDD3',       // Light Red/Rose 200
+            progressColor: '#E11D48',   // Red/Rose 600
+            cursorColor: '#BE123C',     // Dark Red/Rose 700
+            cursorWidth: 2,
+            height: 80,
+            barWidth: 3,
+            barGap: 2,
+            barRadius: 2,
+            normalize: true,
+            backend: 'WebAudio'
+        });
+
+        // Set volume
+        wavesurfer.setVolume(parseFloat(volumeSlider.value));
+
+        // Load audio source
+        wavesurfer.load(wavUrl);
+
+        // Events
+        wavesurfer.on('ready', () => {
+            playPauseBtn.disabled = false;
+            durationTimeEl.textContent = formatTime(wavesurfer.getDuration());
+            wavesurfer.play();
+            playIcon.className = "fa-solid fa-pause text-lg";
+        });
+
+        wavesurfer.on('audioprocess', () => {
+            currentTimeEl.textContent = formatTime(wavesurfer.getCurrentTime());
+        });
+
+        wavesurfer.on('interaction', () => {
+            currentTimeEl.textContent = formatTime(wavesurfer.getCurrentTime());
+        });
+
+        wavesurfer.on('finish', () => {
+            playIcon.className = "fa-solid fa-play text-lg pl-0.5";
+        });
+
+        // Enable download buttons links
+        const baseName = title.rsplit ? title.rsplit('.', 1)[0] : title.split('.')[0];
+        const downloadMidi = document.getElementById('download-midi-btn');
+        const downloadWav = document.getElementById('download-wav-btn');
+
+        downloadMidi.href = `/download/${baseName}.mid`;
+        downloadMidi.classList.remove('opacity-50', 'pointer-events-none');
+
+        downloadWav.href = wavUrl;
+        downloadWav.classList.remove('opacity-50', 'pointer-events-none');
+
+        // Update Title Display
+        document.getElementById('now-playing-title').innerHTML = `<i class="fa-solid fa-compact-disc animate-spin text-brand-600 mr-2"></i>${baseName}.mid`;
+    }
+
+    // Custom split utility
+    String.prototype.rsplit = function(sep, maxsplit) {
+        var split = this.split(sep);
+        return maxsplit ? [ split.slice(0, -maxsplit).join(sep), split.slice(-maxsplit).join(sep) ] : split;
+    };
+
+    // Play/Pause Click Handler
+    if (playPauseBtn) {
+        playPauseBtn.addEventListener('click', () => {
+            if (!wavesurfer) return;
+            wavesurfer.playPause();
+            if (wavesurfer.isPlaying()) {
+                playIcon.className = "fa-solid fa-pause text-lg";
+            } else {
+                playIcon.className = "fa-solid fa-play text-lg pl-0.5";
+            }
+        });
+    }
+
+    // Volume Slider Handler
+    if (volumeSlider) {
+        volumeSlider.addEventListener('input', () => {
+            if (wavesurfer) {
+                wavesurfer.setVolume(parseFloat(volumeSlider.value));
+            }
+            if (parseFloat(volumeSlider.value) === 0) {
+                muteIcon.className = "fa-solid fa-volume-xmark";
+            } else if (parseFloat(volumeSlider.value) < 0.5) {
+                muteIcon.className = "fa-solid fa-volume-low";
+            } else {
+                muteIcon.className = "fa-solid fa-volume-high";
+            }
+        });
+    }
+
+    // Mute Handler
+    if (muteBtn) {
+        muteBtn.addEventListener('click', () => {
+            if (!wavesurfer) return;
+            const isMuted = wavesurfer.getMuted();
+            wavesurfer.setMuted(!isMuted);
+            if (!isMuted) {
+                muteIcon.className = "fa-solid fa-volume-xmark text-brand-600";
+            } else {
+                const vol = parseFloat(volumeSlider.value);
+                muteIcon.className = vol < 0.5 ? "fa-solid fa-volume-low" : "fa-solid fa-volume-high";
+            }
+        });
+    }
+
+    // Compose Button Click Handler
+    if (composeBtn) {
+        composeBtn.addEventListener('click', () => {
+            const numNotes = document.getElementById('num-notes').value;
+            const temperature = document.getElementById('temperature').value;
+            const outputName = document.getElementById('output-name').value || 'generated_song';
+
+            composeBtn.disabled = true;
+            composeBtn.classList.remove('glow-btn');
+            composeBtnText.classList.add('hidden');
+            composeSpinner.classList.remove('hidden');
+
+            showToast('AI is generating notes and chords...', 'info');
+
+            fetch('/generate-music', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ num_notes: numNotes, temperature, output_name: outputName })
+            })
+            .then(res => res.json())
+            .then(data => {
+                composeBtn.disabled = false;
+                composeBtn.classList.add('glow-btn');
+                composeBtnText.classList.remove('hidden');
+                composeSpinner.classList.add('hidden');
+
+                if (data.error) {
+                    showToast(data.error, 'error');
+                } else {
+                    showToast('Composition generated and synthesized successfully!', 'success');
+                    
+                    // Update metadata
+                    document.getElementById('now-playing-stats').textContent = `Length: ${data.num_notes} notes | Temp: ${data.temperature}`;
+                    
+                    // Initialize player with synthesized WAV
+                    if (data.wav_url) {
+                        initWaveSurfer(data.wav_url, data.midi_file);
+                    }
+                    
+                    // Add new row to history table
+                    const tbody = document.getElementById('history-tbody');
+                    const noHistoryRow = document.getElementById('no-history-row');
+                    if (noHistoryRow) {
+                        noHistoryRow.remove();
+                    }
+
+                    const dateStr = new Date().toISOString().slice(0,19).replace('T', ' ');
+                    const newRowHtml = `
+                        <tr>
+                            <td class="py-3.5 pr-3 max-w-[150px] sm:max-w-none">
+                                <div class="flex items-center gap-2.5">
+                                    <i class="fa-solid fa-compact-disc text-brand-400 animate-pulse"></i>
+                                    <span class="truncate font-semibold text-slate-800" title="${data.midi_file}">${data.midi_file}</span>
+                                </div>
+                            </td>
+                            <td class="py-3.5 hidden sm:table-cell text-slate-400 font-normal text-xs">${dateStr}</td>
+                            <td class="py-3.5 text-right flex justify-end gap-1.5">
+                                <button type="button" class="play-history-btn inline-flex items-center justify-center h-8 w-8 rounded-lg bg-brand-50 hover:bg-brand-100 text-brand-700 transition-colors" data-midi="${data.midi_file}" data-wav="${data.wav_file}">
+                                    <i class="fa-solid fa-play"></i>
+                                </button>
+                                <a href="${data.midi_url}" class="inline-flex items-center justify-center h-8 w-8 rounded-lg bg-slate-50 hover:bg-slate-100 text-slate-600 transition-colors" download>
+                                    <i class="fa-solid fa-file-arrow-down"></i>
+                                </a>
+                                <a href="${data.wav_url}" class="inline-flex items-center justify-center h-8 w-8 rounded-lg bg-slate-50 hover:bg-slate-100 text-red-600 transition-colors" download>
+                                    <i class="fa-solid fa-file-wave-form"></i>
+                                </a>
+                            </td>
+                        </tr>
+                    `;
+                    tbody.insertAdjacentHTML('afterbegin', newRowHtml);
+                    
+                    // Bind listener to the newly added play button
+                    const newPlayBtn = tbody.querySelector('.play-history-btn');
+                    bindPlayButton(newPlayBtn);
+                }
+            })
+            .catch(err => {
+                console.error(err);
+                showToast('Generation failed.', 'error');
+                composeBtn.disabled = false;
+                composeBtn.classList.add('glow-btn');
+                composeBtnText.classList.remove('hidden');
+                composeSpinner.classList.add('hidden');
+            });
+        });
+    }
+
+    // Bind function for play-history-buttons
+    function bindPlayButton(btn) {
+        btn.addEventListener('click', () => {
+            const midiName = btn.getAttribute('data-midi');
+            const wavName = btn.getAttribute('data-wav');
+            if (wavName) {
+                showToast(`Loading track: ${midiName}`, 'info');
+                initWaveSurfer(`/download/${wavName}`, midiName);
+                document.getElementById('now-playing-stats').textContent = `Loaded from history`;
+            } else {
+                showToast('WAV file not available for this track.', 'warning');
+            }
+        });
+    }
+
+    // Attach listeners to all historical play buttons
+    document.addEventListener("DOMContentLoaded", () => {
+        const historyPlayBtns = document.querySelectorAll('.play-history-btn');
+        historyPlayBtns.forEach(btn => bindPlayButton(btn));
+    });
+</script>
+{% endblock %}

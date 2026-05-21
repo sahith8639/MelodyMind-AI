@@ -1,0 +1,460 @@
+{% extends 'base.html' %}
+
+{% block title %}Train Model - MelodyMind AI{% endblock %}
+
+{% block head %}
+<!-- Chart.js for real-time progress curves -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+{% endblock %}
+
+{% block content %}
+<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
+    <!-- Header -->
+    <div class="mb-10 text-center md:text-left">
+        <h1 class="text-3xl font-extrabold text-slate-900 tracking-tight">Model Training Control Panel</h1>
+        <p class="mt-2 text-slate-500 max-w-xl">
+            Upload custom MIDI tracks, configure hyper-parameters, and watch the LSTM model learn pitch vocabulary and transition rules in real time.
+        </p>
+    </div>
+
+    <!-- Main Grid -->
+    <div class="grid grid-cols-1 lg:grid-cols-12 gap-8">
+        
+        <!-- Left Column: Datasets & Config (5 cols) -->
+        <div class="lg:col-span-5 space-y-8">
+            
+            <!-- Dataset Manager -->
+            <div class="bg-white border border-slate-100 rounded-2xl p-6 shadow-sm">
+                <h3 class="text-lg font-bold text-slate-900 mb-4 flex items-center gap-2">
+                    <i class="fa-solid fa-folder-open text-brand-600"></i> Training MIDI Dataset
+                </h3>
+                
+                <!-- Upload form -->
+                <form id="upload-form" class="mb-6">
+                    <div class="border-2 border-dashed border-brand-200 hover:border-brand-500 rounded-xl p-6 text-center cursor-pointer transition-colors duration-200 relative" id="drop-zone">
+                        <input type="file" id="midi-file" name="file" accept=".mid,.midi" class="hidden">
+                        <i class="fa-solid fa-cloud-arrow-up text-brand-400 text-3xl mb-2"></i>
+                        <p class="text-sm font-semibold text-slate-700">Drag & drop a MIDI file here</p>
+                        <p class="text-xs text-slate-400 mt-1">or click to browse from device (Max 10MB)</p>
+                    </div>
+                </form>
+                
+                <!-- File List -->
+                <div class="space-y-2 max-h-56 overflow-y-auto pr-1" id="file-list-container">
+                    <p class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Current Files ({{ midi_files|length }})</p>
+                    {% if midi_files %}
+                        {% for file in midi_files %}
+                        <div class="flex justify-between items-center bg-slate-50 rounded-lg p-2.5 text-sm border border-slate-100 hover:border-brand-100 transition-colors">
+                            <span class="truncate font-medium text-slate-700 max-w-[80%]"><i class="fa-solid fa-file-lines text-slate-400 mr-2"></i>{{ file }}</span>
+                            <span class="text-[10px] bg-brand-50 text-brand-700 font-bold px-2 py-0.5 rounded-full">Ready</span>
+                        </div>
+                        {% endfor %}
+                    {% else %}
+                        <p class="text-sm text-slate-400 italic py-4 text-center">No MIDI files in dataset. Add files or run default training.</p>
+                    {% endif %}
+                </div>
+            </div>
+
+            <!-- Training Configuration -->
+            <div class="bg-white border border-slate-100 rounded-2xl p-6 shadow-sm">
+                <h3 class="text-lg font-bold text-slate-900 mb-4 flex items-center gap-2">
+                    <i class="fa-solid fa-sliders text-brand-600"></i> Training Parameters
+                </h3>
+                
+                <div class="space-y-4">
+                    <div>
+                        <label for="epochs-input" class="block text-sm font-semibold text-slate-700">Epochs</label>
+                        <div class="mt-1 flex gap-2">
+                            <input type="number" id="epochs-input" value="50" min="1" max="200" class="block w-full rounded-xl border border-slate-200 px-4 py-2.5 text-slate-700 focus:outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500 text-sm">
+                            <select id="quick-epochs" class="rounded-xl border border-slate-200 text-xs px-2 py-2 bg-slate-50 text-slate-600 focus:outline-none" onchange="document.getElementById('epochs-input').value = this.value">
+                                <option value="50">Select Epochs</option>
+                                <option value="5">5 (Quick test)</option>
+                                <option value="15">15 (Draft)</option>
+                                <option value="50">50 (Default)</option>
+                                <option value="100">100 (High Quality)</option>
+                            </select>
+                        </div>
+                        <p class="text-xs text-slate-400 mt-1">Number of full passes over dataset. More epochs improve learning but take longer.</p>
+                    </div>
+
+                    <div>
+                        <label for="batch-input" class="block text-sm font-semibold text-slate-700">Batch Size</label>
+                        <input type="number" id="batch-input" value="64" min="1" max="256" class="block w-full rounded-xl border border-slate-200 px-4 py-2.5 text-slate-700 focus:outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500 text-sm mt-1">
+                        <p class="text-xs text-slate-400 mt-1">Number of sequences trained at once (Default: 64).</p>
+                    </div>
+                    
+                    <button type="button" id="start-train-btn" class="w-full inline-flex items-center justify-center px-4 py-3 border border-transparent text-sm font-semibold rounded-xl text-white bg-brand-600 hover:bg-brand-700 shadow-md hover:shadow-lg transition-all duration-200 glow-btn" {% if history.status in ['training', 'preprocessing', 'preparing_sequences'] %}disabled{% endif %}>
+                        <i class="fa-solid fa-play mr-2"></i> Start Training
+                    </button>
+                </div>
+            </div>
+            
+        </div>
+
+        <!-- Right Column: Real-time logs and Graphs (7 cols) -->
+        <div class="lg:col-span-7 space-y-8">
+            
+            <!-- Real-time Status Card -->
+            <div class="bg-white border border-slate-100 rounded-2xl p-6 shadow-sm">
+                <div class="flex justify-between items-center mb-6">
+                    <h3 class="text-lg font-bold text-slate-900 flex items-center gap-2">
+                        <i class="fa-solid fa-satellite-dish text-brand-600"></i> Training Monitor
+                    </h3>
+                    <span id="status-badge" class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold capitalize">
+                        <!-- Filled by JS -->
+                        <span class="h-2 w-2 rounded-full bg-slate-300"></span> Idle
+                    </span>
+                </div>
+
+                <!-- Progress Bar -->
+                <div class="space-y-2 mb-6">
+                    <div class="flex justify-between text-xs font-bold text-slate-400 uppercase tracking-wider">
+                        <span>Progress</span>
+                        <span id="progress-percentage">0%</span>
+                    </div>
+                    <div class="w-full bg-slate-100 rounded-full h-3.5 overflow-hidden">
+                        <div id="progress-bar" class="bg-gradient-to-r from-brand-500 to-red-500 h-full rounded-full transition-all duration-300" style="width: 0%"></div>
+                    </div>
+                </div>
+
+                <!-- Stats summary -->
+                <div class="grid grid-cols-3 gap-4 mb-6">
+                    <div class="bg-slate-50 border border-slate-100 rounded-xl p-3 text-center">
+                        <p class="text-xs font-bold text-slate-400 uppercase tracking-wider">Current Epoch</p>
+                        <p id="epoch-stat" class="text-lg font-extrabold text-slate-800 mt-1">-</p>
+                    </div>
+                    <div class="bg-slate-50 border border-slate-100 rounded-xl p-3 text-center">
+                        <p class="text-xs font-bold text-slate-400 uppercase tracking-wider">Loss</p>
+                        <p id="loss-stat" class="text-lg font-extrabold text-brand-600 mt-1">-</p>
+                    </div>
+                    <div class="bg-slate-50 border border-slate-100 rounded-xl p-3 text-center">
+                        <p class="text-xs font-bold text-slate-400 uppercase tracking-wider">Accuracy</p>
+                        <p id="acc-stat" class="text-lg font-extrabold text-emerald-600 mt-1">-</p>
+                    </div>
+                </div>
+
+                <!-- Terminal-like Console Logs -->
+                <div class="bg-slate-900 rounded-xl p-4 font-mono text-xs text-brand-300 h-40 overflow-y-auto mb-6 border border-slate-950 shadow-inner" id="console-logs">
+                    <div class="text-slate-400">// System ready. Configure parameters and click start training.</div>
+                </div>
+                
+                <!-- Training history plots -->
+                <div class="relative h-64 border border-slate-100 rounded-xl p-4">
+                    <canvas id="trainingChart"></canvas>
+                </div>
+            </div>
+            
+        </div>
+        
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<!-- Custom scripts for AJAX uploader and training socket/polling -->
+<script src="{{ url_for('static', filename='js/script.js') }}"></script>
+<script>
+    // Initialize file drag and drop UI
+    const dropZone = document.getElementById('drop-zone');
+    const fileInput = document.getElementById('midi-file');
+    
+    if (dropZone && fileInput) {
+        dropZone.addEventListener('click', () => fileInput.click());
+        
+        dropZone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            dropZone.classList.add('border-brand-500', 'bg-brand-50');
+        });
+        
+        dropZone.addEventListener('dragleave', () => {
+            dropZone.classList.remove('border-brand-500', 'bg-brand-50');
+        });
+        
+        dropZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            dropZone.classList.remove('border-brand-500', 'bg-brand-50');
+            if (e.dataTransfer.files.length) {
+                fileInput.files = e.dataTransfer.files;
+                uploadFile();
+            }
+        });
+        
+        fileInput.addEventListener('change', uploadFile);
+    }
+    
+    function uploadFile() {
+        const file = fileInput.files[0];
+        if (!file) return;
+        
+        const formData = new FormData();
+        formData.append('file', file);
+        
+        showToast('Uploading file...', 'info');
+        
+        fetch('/upload-midi', {
+            method: 'POST',
+            body: formData
+        })
+        .then(res => res.json())
+        .then(data => {
+            if (data.error) {
+                showToast(data.error, 'error');
+            } else {
+                showToast(data.message, 'success');
+                // Reload page to update lists or dynamically append
+                setTimeout(() => window.location.reload(), 1000);
+            }
+        })
+        .catch(err => {
+            showToast('Upload failed.', 'error');
+        });
+    }
+
+    // Chart.js initialization
+    const ctx = document.getElementById('trainingChart').getContext('2d');
+    const trainingChart = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: [],
+            datasets: [
+                {
+                    label: 'Loss',
+                    data: [],
+                    borderColor: '#E11D48',
+                    backgroundColor: 'rgba(225, 29, 72, 0.05)',
+                    borderWidth: 2,
+                    tension: 0.1,
+                    yAxisID: 'y'
+                },
+                {
+                    label: 'Accuracy',
+                    data: [],
+                    borderColor: '#10B981',
+                    backgroundColor: 'rgba(16, 185, 129, 0.05)',
+                    borderWidth: 2,
+                    tension: 0.1,
+                    yAxisID: 'y1'
+                }
+            ]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+                y: {
+                    type: 'linear',
+                    display: true,
+                    position: 'left',
+                    title: {
+                        display: true,
+                        text: 'Loss',
+                        color: '#E11D48',
+                        font: { weight: 'bold' }
+                    }
+                },
+                y1: {
+                    type: 'linear',
+                    display: true,
+                    position: 'right',
+                    grid: { drawOnChartArea: false }, // only want grid for left
+                    title: {
+                        display: true,
+                        text: 'Accuracy',
+                        color: '#10B981',
+                        font: { weight: 'bold' }
+                    },
+                    min: 0,
+                    max: 1
+                }
+            }
+        }
+    });
+
+    // Start training button handler
+    const trainBtn = document.getElementById('start-train-btn');
+    if (trainBtn) {
+        trainBtn.addEventListener('click', () => {
+            const epochs = parseInt(document.getElementById('epochs-input').value) || 50;
+            const batchSize = parseInt(document.getElementById('batch-input').value) || 64;
+            
+            trainBtn.disabled = true;
+            trainBtn.classList.remove('glow-btn');
+            
+            fetch('/start-training', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ epochs, batch_size: batchSize })
+            })
+            .then(res => res.json())
+            .then(data => {
+                if (data.error) {
+                    showToast(data.error, 'error');
+                    trainBtn.disabled = false;
+                    trainBtn.classList.add('glow-btn');
+                } else {
+                    showToast('Model training started!', 'success');
+                    // Reset chart arrays
+                    trainingChart.data.labels = [];
+                    trainingChart.data.datasets[0].data = [];
+                    trainingChart.data.datasets[1].data = [];
+                    trainingChart.update();
+                    
+                    // Clear terminal logs
+                    const consoleEl = document.getElementById('console-logs');
+                    consoleEl.innerHTML = '';
+                    addConsoleLog('Initializing background training thread...', 'info');
+                    
+                    // Poll status
+                    pollStatus();
+                }
+            })
+            .catch(err => {
+                showToast('Failed to start training.', 'error');
+                trainBtn.disabled = false;
+                trainBtn.classList.add('glow-btn');
+            });
+        });
+    }
+
+    // Polling function for training progress
+    let pollInterval = null;
+    let prevEpoch = 0;
+    
+    function addConsoleLog(message, type='info') {
+        const consoleEl = document.getElementById('console-logs');
+        if (!consoleEl) return;
+        
+        const entry = document.createElement('div');
+        const timestamp = new Date().toLocaleTimeString();
+        
+        if (type === 'error') {
+            entry.className = 'text-red-500';
+            entry.innerHTML = `[${timestamp}] <i class="fa-solid fa-circle-exclamation"></i> ERROR: ${message}`;
+        } else if (type === 'success') {
+            entry.className = 'text-emerald-400';
+            entry.innerHTML = `[${timestamp}] <i class="fa-solid fa-circle-check"></i> SUCCESS: ${message}`;
+        } else if (type === 'warning') {
+            entry.className = 'text-amber-400';
+            entry.innerHTML = `[${timestamp}] <i class="fa-solid fa-triangle-exclamation"></i> WARNING: ${message}`;
+        } else {
+            entry.innerHTML = `[${timestamp}] ${message}`;
+        }
+        
+        consoleEl.appendChild(entry);
+        consoleEl.scrollTop = consoleEl.scrollHeight;
+    }
+    
+    function updateBadge(status) {
+        const badge = document.getElementById('status-badge');
+        if (!badge) return;
+        
+        let colorClass = 'bg-slate-100 text-slate-600 border-slate-200';
+        let dotColor = 'bg-slate-400';
+        
+        if (status === 'completed') {
+            colorClass = 'bg-emerald-50 text-emerald-700 border-emerald-200';
+            dotColor = 'bg-emerald-500';
+        } else if (['training', 'preprocessing', 'preparing_sequences'].includes(status)) {
+            colorClass = 'bg-rose-50 text-rose-700 border-rose-200';
+            dotColor = 'bg-brand-500 animate-pulse';
+        } else if (status === 'failed') {
+            colorClass = 'bg-red-50 text-red-700 border-red-200';
+            dotColor = 'bg-red-500';
+        }
+        
+        badge.className = `inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold border capitalize ${colorClass}`;
+        badge.innerHTML = `<span class="h-2 w-2 rounded-full ${dotColor}"></span> ${status.replace('_', ' ')}`;
+    }
+    
+    function pollStatus() {
+        if (pollInterval) clearInterval(pollInterval);
+        
+        pollInterval = setInterval(() => {
+            fetch('/status')
+            .then(res => res.json())
+            .then(data => {
+                const status = data.status || 'idle';
+                updateBadge(status);
+                
+                if (status === 'idle') {
+                    clearInterval(pollInterval);
+                    trainBtn.disabled = false;
+                    trainBtn.classList.add('glow-btn');
+                    return;
+                }
+                
+                if (status === 'preprocessing') {
+                    document.getElementById('progress-percentage').textContent = '5%';
+                    document.getElementById('progress-bar').style.width = '5%';
+                    addConsoleLog('Parsing MIDI files and extracting pitches...', 'info');
+                } else if (status === 'preparing_sequences') {
+                    document.getElementById('progress-percentage').textContent = '10%';
+                    document.getElementById('progress-bar').style.width = '10%';
+                    addConsoleLog(`Extracted ${data.notes_count || 0} note events. Preparing model sequences...`, 'info');
+                } else if (status === 'training') {
+                    const curEpoch = data.current_epoch || 0;
+                    const totEpochs = data.total_epochs || 50;
+                    const pct = Math.round((curEpoch / totEpochs) * 90) + 10;
+                    
+                    document.getElementById('progress-percentage').textContent = `${pct}%`;
+                    document.getElementById('progress-bar').style.width = `${pct}%`;
+                    
+                    document.getElementById('epoch-stat').textContent = `${curEpoch}/${totEpochs}`;
+                    document.getElementById('loss-stat').textContent = data.loss ? data.loss.toFixed(4) : '-';
+                    document.getElementById('acc-stat').textContent = data.accuracy ? `${(data.accuracy * 100).toFixed(1)}%` : '-';
+                    
+                    if (curEpoch > prevEpoch) {
+                        addConsoleLog(`Epoch ${curEpoch}/${totEpochs} completed. Loss: ${data.loss.toFixed(4)} | Acc: ${(data.accuracy * 100).toFixed(1)}%`, 'info');
+                        
+                        // Push into chart
+                        trainingChart.data.labels.push(`E${curEpoch}`);
+                        trainingChart.data.datasets[0].data.push(data.loss);
+                        trainingChart.data.datasets[1].data.push(data.accuracy);
+                        trainingChart.update();
+                        
+                        prevEpoch = curEpoch;
+                    }
+                } else if (status === 'completed') {
+                    clearInterval(pollInterval);
+                    document.getElementById('progress-percentage').textContent = '100%';
+                    document.getElementById('progress-bar').style.width = '100%';
+                    
+                    document.getElementById('epoch-stat').textContent = `${data.total_epochs}/${data.total_epochs}`;
+                    document.getElementById('loss-stat').textContent = data.loss ? data.loss.toFixed(4) : '-';
+                    document.getElementById('acc-stat').textContent = data.accuracy ? `${(data.accuracy * 100).toFixed(1)}%` : '-';
+                    
+                    addConsoleLog(`Training successfully completed in ${data.elapsed_time ? Math.round(data.elapsed_time) : 0}s! Weights saved to model/music_model.h5.`, 'success');
+                    showToast('Training complete! You can now compose music.', 'success');
+                    
+                    trainBtn.disabled = false;
+                    trainBtn.classList.add('glow-btn');
+                } else if (status === 'failed') {
+                    clearInterval(pollInterval);
+                    addConsoleLog(`Training failed: ${data.error_message || 'Unknown error'}`, 'error');
+                    showToast('Training failed.', 'error');
+                    trainBtn.disabled = false;
+                    trainBtn.classList.add('glow-btn');
+                }
+            })
+            .catch(err => {
+                console.error(err);
+            });
+        }, 1000);
+    }
+    
+    // Automatically poll status on page load in case training is currently running in background
+    document.addEventListener("DOMContentLoaded", () => {
+        fetch('/status')
+        .then(res => res.json())
+        .then(data => {
+            const status = data.status || 'idle';
+            updateBadge(status);
+            if (['training', 'preprocessing', 'preparing_sequences'].includes(status)) {
+                trainBtn.disabled = true;
+                trainBtn.classList.remove('glow-btn');
+                pollStatus();
+            }
+        });
+    });
+</script>
+{% endblock %}

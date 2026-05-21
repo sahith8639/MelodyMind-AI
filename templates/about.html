@@ -1,0 +1,151 @@
+{% extends 'base.html' %}
+
+{% block title %}About the Project - MelodyMind AI{% endblock %}
+
+{% block content %}
+<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+    <!-- Header -->
+    <div class="text-center max-w-2xl mx-auto mb-16">
+        <span class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold bg-brand-50 text-brand-700 border border-brand-200">
+            <i class="fa-solid fa-graduation-cap"></i> Under the Hood
+        </span>
+        <h1 class="text-3xl font-extrabold text-slate-900 tracking-tight sm:text-4xl mt-3">
+            How MelodyMind AI Works
+        </h1>
+        <p class="mt-4 text-slate-500">
+            Discover the mathematics, algorithms, and deep learning neural architectures driving the automated composition process.
+        </p>
+    </div>
+
+    <!-- Section 1: Preprocessing & Parsing -->
+    <div class="bg-white border border-slate-100 rounded-3xl p-8 md:p-12 shadow-sm mb-12">
+        <div class="lg:grid lg:grid-cols-12 lg:gap-10 items-center">
+            <div class="lg:col-span-7 space-y-6">
+                <h2 class="text-2xl font-bold text-slate-900 flex items-center gap-2">
+                    <span class="h-8 w-8 rounded-lg bg-brand-50 border border-brand-100 flex items-center justify-center text-brand-600 text-sm">01</span>
+                    MIDI Preprocessing Pipeline
+                </h2>
+                <p class="text-slate-500 text-sm leading-relaxed">
+                    Raw MIDI files are not waveforms; they are binary event files containing instructions (note on/off, pitch, velocity, timing). To train an AI, we need to extract and structure this information:
+                </p>
+                <ul class="space-y-3.5 text-sm text-slate-600">
+                    <li class="flex items-start gap-2.5">
+                        <i class="fa-solid fa-circle-check text-brand-600 mt-1"></i>
+                        <span><strong>Parsing with music21:</strong> We load and flatten MIDI files, identifying individual instrument paths and extracting chronological note and chord event streams.</span>
+                    </li>
+                    <li class="flex items-start gap-2.5">
+                        <i class="fa-solid fa-circle-check text-brand-600 mt-1"></i>
+                        <span><strong>Note vs Chord Encoding:</strong> Single notes are parsed as simple pitch names (e.g. <code>C4</code>). Chords are sorted by note frequency and represented as dots connecting pitches (e.g. <code>C4.E4.G4</code>) to ensure consistent vocabulary tokenization.</span>
+                    </li>
+                    <li class="flex items-start gap-2.5">
+                        <i class="fa-solid fa-circle-check text-brand-600 mt-1"></i>
+                        <span><strong>Sequence Segmentation:</strong> The continuous stream is segmented into training windows of length 100. Each input sequence predicts the 101st note/chord, capturing long-term melodic contexts.</span>
+                    </li>
+                </ul>
+            </div>
+            <!-- Graphic Right -->
+            <div class="lg:col-span-5 mt-8 lg:mt-0 bg-slate-50 border border-slate-100 rounded-2xl p-6 font-mono text-xs text-slate-600 space-y-3">
+                <div class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">// Preprocessing representation</div>
+                <div class="p-2 bg-white rounded border border-slate-100"><span class="text-slate-400">MIDI Event:</span> NoteOn Channel=1 Note=60 Vel=80</div>
+                <div class="p-2 bg-white rounded border border-slate-100"><span class="text-slate-400">music21 pitch:</span> C4</div>
+                <div class="p-2 bg-white rounded border border-slate-100"><span class="text-slate-400">Chord pitch:</span> C4.E4.G4</div>
+                <div class="p-2 bg-white rounded border border-slate-100"><span class="text-slate-400">Vocabulary Token:</span> 147 -> [0.385] (Normalized input)</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Section 2: LSTM Model Architecture -->
+    <div class="bg-white border border-slate-100 rounded-3xl p-8 md:p-12 shadow-sm mb-12">
+        <div class="lg:grid lg:grid-cols-12 lg:gap-10 items-center">
+            <!-- Graphic Left -->
+            <div class="lg:col-span-5 order-2 lg:order-1 bg-slate-50 border border-slate-100 rounded-2xl p-6 font-mono text-xs text-slate-600 space-y-2">
+                <div class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">// Keras Model Summary</div>
+                <div class="flex justify-between border-b border-slate-200 pb-1.5 font-bold"><span>Layer (type)</span> <span>Output Shape</span></div>
+                <div class="flex justify-between py-1"><span>lstm_1 (LSTM)</span> <span>(None, 100, 512)</span></div>
+                <div class="flex justify-between py-1 text-red-500"><span>dropout_1 (Dropout)</span> <span>(None, 100, 512)</span></div>
+                <div class="flex justify-between py-1"><span>lstm_2 (LSTM)</span> <span>(None, 512)</span></div>
+                <div class="flex justify-between py-1"><span>dense_1 (Dense - ReLU)</span> <span>(None, 256)</span></div>
+                <div class="flex justify-between py-1 text-red-500"><span>dropout_2 (Dropout)</span> <span>(None, 256)</span></div>
+                <div class="flex justify-between py-1"><span>dense_2 (Dense - Softmax)</span> <span>(None, vocab_size)</span></div>
+            </div>
+            
+            <!-- Details Right -->
+            <div class="lg:col-span-7 order-1 lg:order-2 space-y-6">
+                <h2 class="text-2xl font-bold text-slate-900 flex items-center gap-2">
+                    <span class="h-8 w-8 rounded-lg bg-red-50 border border-red-100 flex items-center justify-center text-red-600 text-sm">02</span>
+                    Neural Network Architecture
+                </h2>
+                <p class="text-slate-500 text-sm leading-relaxed">
+                    Our model is a Recurrent Neural Network (RNN) designed for sequential data processing. Standard feedforward networks assume inputs are independent, whereas musical structures depend entirely on historical sequences.
+                </p>
+                <ul class="space-y-3.5 text-sm text-slate-600">
+                    <li class="flex items-start gap-2.5">
+                        <i class="fa-solid fa-circle-check text-red-600 mt-1"></i>
+                        <span><strong>Double LSTM Blocks (512 Nodes):</strong> Long Short-Term Memory cells resolve the "vanishing gradient" problem of standard RNNs. They maintain cell states over long windows, remembering motifs across the 100-note window.</span>
+                    </li>
+                    <li class="flex items-start gap-2.5">
+                        <i class="fa-solid fa-circle-check text-red-600 mt-1"></i>
+                        <span><strong>Dropout Regularization (30%):</strong> Dropout blocks randomly deactivate neurons during training. This prevents overfitting, forcing the network to learn robust global relationships instead of memorizing specific files.</span>
+                    </li>
+                    <li class="flex items-start gap-2.5">
+                        <i class="fa-solid fa-circle-check text-red-600 mt-1"></i>
+                        <span><strong>Categorical Crossentropy loss:</strong> Compares predictions to actual notes using multi-class probabilities, optimizing accuracy using the Adam optimizer.</span>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </div>
+
+    <!-- Section 3: Deployment Instructions -->
+    <div class="bg-white border border-slate-100 rounded-3xl p-8 md:p-12 shadow-sm">
+        <h2 class="text-2xl font-bold text-slate-900 mb-8 flex items-center gap-2">
+            <span class="h-8 w-8 rounded-lg bg-emerald-50 border border-emerald-100 flex items-center justify-center text-emerald-600 text-sm">03</span>
+            Deployment & Setup Instructions
+        </h2>
+        
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-8 text-sm">
+            <!-- GitHub repo -->
+            <div class="space-y-4">
+                <h4 class="font-extrabold text-slate-800 text-base"><i class="fa-brands fa-github text-slate-900 mr-1.5"></i> Repository Structure</h4>
+                <p class="text-slate-500 leading-relaxed text-xs">
+                    Prepare a GitHub repository named <code>CodeAlpha_Music_Generation_AI</code>. Ensure directory structures are populated. Push code to main branch.
+                </p>
+                <div class="bg-slate-900 rounded-xl p-4 font-mono text-xs text-brand-300 border border-slate-950">
+                    git init<br>
+                    git add .<br>
+                    git commit -m "Initialize MelodyMind AI"<br>
+                    git remote add origin &lt;repo_url&gt;<br>
+                    git branch -M main<br>
+                    git push -u origin main
+                </div>
+            </div>
+
+            <!-- Render -->
+            <div class="space-y-4">
+                <h4 class="font-extrabold text-slate-800 text-base"><i class="fa-solid fa-server text-indigo-600 mr-1.5"></i> Render Deployment</h4>
+                <p class="text-slate-500 leading-relaxed text-xs">
+                    Deploy instantly as a Web Service on Render:
+                </p>
+                <ul class="space-y-2.5 text-xs text-slate-600">
+                    <li class="flex items-start gap-1.5">
+                        <i class="fa-solid fa-circle-play text-slate-400 mt-0.5"></i>
+                        <span>Connect GitHub repo to Render Dashboard.</span>
+                    </li>
+                    <li class="flex items-start gap-1.5">
+                        <i class="fa-solid fa-circle-play text-slate-400 mt-0.5"></i>
+                        <span>Select **Python** environment. Build Command: <code>pip install -r requirements.txt</code></span>
+                    </li>
+                    <li class="flex items-start gap-1.5">
+                        <i class="fa-solid fa-circle-play text-slate-400 mt-0.5"></i>
+                        <span>Start Command: <code>gunicorn app:app</code></span>
+                    </li>
+                    <li class="flex items-start gap-1.5">
+                        <i class="fa-solid fa-circle-play text-slate-400 mt-0.5"></i>
+                        <span>Render will auto-detect <code>runtime.txt</code> and deploy with Python 3.11.</span>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,9 @@
+Flask==3.0.3
+gunicorn==22.0.0
+tensorflow>=2.15.0
+numpy>=1.23.5
+pandas>=2.0.3
+music21>=9.1.0
+scikit-learn>=1.2.2
+pretty_midi>=0.2.10
+scipy>=1.10.1

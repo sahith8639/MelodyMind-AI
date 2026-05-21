@@ -1,0 +1,18 @@
+venv/
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.DS_Store
+.ipynb_checkpoints/
+
+# Ignore datasets and generated outputs but allow .gitkeep files
+dataset/midi_files/*
+!dataset/midi_files/.gitkeep
+generated/*
+!generated/.gitkeep
+model/*.h5
+model/*.pkl
+model/*.json
+!model/.gitkeep
